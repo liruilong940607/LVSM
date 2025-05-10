@@ -149,7 +149,7 @@ class QK_Norm_SelfAttention(nn.Module):
             self.q_norm = RMSNorm(head_dim)
             self.k_norm = RMSNorm(head_dim)
 
-    def forward(self, x, attn_bias=None):
+    def forward(self, x, attn_bias=None, prope_kwargs={}):
         """
         Args:
             x: Input tensor of shape (batch, seq_len, dim)
@@ -167,7 +167,7 @@ class QK_Norm_SelfAttention(nn.Module):
             q = self.q_norm(q)
             k = self.k_norm(k)
 
-        x = attention_fn(q, k, v, attn_bias=attn_bias, p=self.attn_dropout if self.training else 0.0)
+        x = attention_fn(q, k, v, attn_bias=attn_bias, p=self.attn_dropout if self.training else 0.0, prope_kwargs=prope_kwargs)
         x = rearrange(x, "b l nh dh -> b l (nh dh)")
         x = self.attn_fc_dropout(self.fc(x))
         
@@ -216,8 +216,8 @@ class QK_Norm_TransformerBlock(nn.Module):
         )
 
 
-    def forward(self, x):
-        x = x + self.attn(self.norm1(x))
+    def forward(self, x, prope_kwargs={}):
+        x = x + self.attn(self.norm1(x), prope_kwargs=prope_kwargs)
         x = x + self.mlp(self.norm2(x))
         return x
 

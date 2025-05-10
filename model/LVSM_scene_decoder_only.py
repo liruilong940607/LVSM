@@ -110,7 +110,7 @@ class Images2LatentScene(nn.Module):
 
 
     
-    def pass_layers(self, input_tokens, gradient_checkpoint=False, checkpoint_every=1):
+    def pass_layers(self, input_tokens, gradient_checkpoint=False, checkpoint_every=1, prope_kwargs={}):
         """
         Helper function to pass input tokens through all transformer blocks with optional gradient checkpointing.
         
@@ -132,14 +132,14 @@ class Images2LatentScene(nn.Module):
         if not gradient_checkpoint:
             # Standard forward pass through all layers
             for layer in self.transformer_blocks:
-                input_tokens = layer(input_tokens)
+                input_tokens = layer(input_tokens, prope_kwargs=prope_kwargs)
             return input_tokens
             
         # Gradient checkpointing enabled - process layers in groups
-        def _process_layer_group(tokens, start_idx, end_idx):
+        def _process_layer_group(tokens, start_idx, end_idx, prope_kwargs):
             """Helper to process a group of consecutive layers."""
             for idx in range(start_idx, end_idx):
-                tokens = self.transformer_blocks[idx](tokens)
+                tokens = self.transformer_blocks[idx](tokens, prope_kwargs=prope_kwargs)
             return tokens
             
         # Process layer groups with gradient checkpointing
@@ -150,6 +150,7 @@ class Images2LatentScene(nn.Module):
                 input_tokens,
                 start_idx,
                 end_idx,
+                prope_kwargs,
                 use_reentrant=False
             )
             
@@ -216,11 +217,42 @@ class Images2LatentScene(nn.Module):
             v_target=v_target, np=n_patches * v_input
         )
 
+        if self.config.prope:
+            input_c2w = repeat(input["c2w"], 'b v_input i j -> (b v_target) v_input i j', v_target=v_target)
+            target_c2w = rearrange(target["c2w"], 'b v_target i j -> (b v_target) 1 i j')
+            c2w = torch.cat((input_c2w, target_c2w), dim=1)
+            viewmats = torch.inverse(c2w)
+
+            input_fxfycxcy = repeat(input["fxfycxcy"], 'b v_input i -> (b v_target) v_input i', v_target=v_target)
+            target_fxfycxcy = rearrange(target["fxfycxcy"], 'b v_target i -> (b v_target) 1 i')
+            fxfycxcy = torch.cat((input_fxfycxcy, target_fxfycxcy), dim=1)
+            Ks = torch.zeros(*fxfycxcy.shape[:-1], 3, 3, device=input.fxfycxcy.device)
+            Ks[..., 0, 0] = fxfycxcy[..., 0]
+            Ks[..., 1, 1] = fxfycxcy[..., 1]
+            Ks[..., 0, 2] = fxfycxcy[..., 2]
+            Ks[..., 1, 2] = fxfycxcy[..., 3]
+
+            image_width = input["image"].shape[-1]
+            image_height = input["image"].shape[-2]
+            patches_x = image_width // self.config.model.image_tokenizer.patch_size
+            patches_y = image_height // self.config.model.image_tokenizer.patch_size
+
+            prope_kwargs = {
+                "viewmats": viewmats,
+                "Ks": Ks,
+                "patches_x": patches_x,
+                "patches_y": patches_y,
+                "image_width": image_width,
+                "image_height": image_height,
+            }
+        else:
+            prope_kwargs = {}
+
         # Concatenate input and target tokens
         transformer_input = torch.cat((repeated_input_img_tokens, target_pose_tokens), dim=1)  
         concat_img_tokens = self.transformer_input_layernorm(transformer_input)
         checkpoint_every = self.config.training.grad_checkpoint_every
-        transformer_output_tokens = self.pass_layers(concat_img_tokens, gradient_checkpoint=True, checkpoint_every=checkpoint_every)
+        transformer_output_tokens = self.pass_layers(concat_img_tokens, gradient_checkpoint=True, checkpoint_every=checkpoint_every, prope_kwargs=prope_kwargs)
 
         # Discard the input tokens
         _, target_image_tokens = transformer_output_tokens.split(
@@ -327,6 +359,7 @@ class Images2LatentScene(nn.Module):
             # Add homogeneous row to c2ws
             homogeneous_row = torch.tensor([[[0, 0, 0, 1]]], device=device).expand(all_c2ws.shape[0], all_c2ws.shape[1], -1, -1)
             all_c2ws = torch.cat([all_c2ws, homogeneous_row], dim=2)
+            all_w2cs = torch.inverse(all_c2ws)
 
             # Convert intrinsics to fxfycxcy format
             all_fxfycxcy = torch.zeros((all_intrinsics.shape[0], all_intrinsics.shape[1], 4), device=device)
@@ -345,7 +378,15 @@ class Images2LatentScene(nn.Module):
             ray_o=rendering_ray_o.to(input.image.device), 
             ray_d=rendering_ray_d.to(input.image.device)
         )
-                
+
+        if self.config.prope:
+            input_w2cs = torch.inverse(input.c2w)
+            input_intrinsics = torch.zeros(*input.fxfycxcy.shape[:-1], 3, 3, device=input.fxfycxcy.device)
+            input_intrinsics[:, :, 0, 0] = input.fxfycxcy[:, :, 0]
+            input_intrinsics[:, :, 1, 1] = input.fxfycxcy[:, :, 1]
+            input_intrinsics[:, :, 0, 2] = input.fxfycxcy[:, :, 2]
+            input_intrinsics[:, :, 1, 2] = input.fxfycxcy[:, :, 3]
+            
         _, num_views, c, h, w = target_pose_cond.size()
     
         target_pose_tokens = self.target_pose_tokenizer(target_pose_cond) # [bs*v_target, n_patches, d]
@@ -372,7 +413,29 @@ class Images2LatentScene(nn.Module):
                 cur_concat_input_tokens
             )
 
-            transformer_output_tokens = self.pass_layers(cur_concat_input_tokens, gradient_checkpoint=False)
+            if self.config.prope:
+                viewmats = torch.cat([
+                    repeat(input_w2cs, 'b v_input i j -> (b v_target) v_input i j', v_target=cur_view_chunk_size),
+                    rearrange(all_w2cs[:, cur_chunk:cur_chunk+cur_view_chunk_size, :, :], 'b v_target i j -> (b v_target) 1 i j')
+                ], dim=1)
+                Ks = torch.cat([
+                    repeat(input_intrinsics, 'b v_input i j -> (b v_target) v_input i j', v_target=cur_view_chunk_size),
+                    rearrange(all_intrinsics[:, cur_chunk:cur_chunk+cur_view_chunk_size, :, :], 'b v_target i j -> (b v_target) 1 i j')
+                ], dim=1)
+                patches_x = w // self.config.model.image_tokenizer.patch_size
+                patches_y = h // self.config.model.image_tokenizer.patch_size
+                prope_kwargs = {
+                    "viewmats": viewmats,
+                    "Ks": Ks,
+                    "patches_x": patches_x,
+                    "patches_y": patches_y,
+                    "image_width": w,
+                    "image_height": h,
+                }
+            else:
+                prope_kwargs = {}
+
+            transformer_output_tokens = self.pass_layers(cur_concat_input_tokens, gradient_checkpoint=False, prope_kwargs=prope_kwargs)
 
             _, pred_target_image_tokens = transformer_output_tokens.split(
                 [v_input * n_patches, n_patches], dim=1
