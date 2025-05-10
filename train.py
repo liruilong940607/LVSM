@@ -71,6 +71,29 @@ total_num_epochs = int(total_param_update_steps * total_batch_size / len(dataset
 module, class_name = config.model.class_name.rsplit(".", 1)
 LVSM = importlib.import_module(module).__dict__[class_name]
 model = LVSM(config).to(ddp_info.device)
+
+if config.pretrained:
+    model.load_ckpt("./experiments/checkpoints/")
+
+if config.lora:
+    # apply lora to Q/K/V linear layers
+    from peft import LoraConfig, get_peft_model
+    peft_config = LoraConfig(
+        # finetune all Q/K/V and proj layers
+        target_modules=r"^.*\.attn\.(to_qkv|fc)$",
+        # exclude text related modules
+        # exclude_modules=r"^.*\.context_block(\..*)?$",
+        r=8,
+        lora_alpha=32,
+        lora_dropout=0.1,
+    )
+    # print model modules
+    # for name, module in model.named_modules():
+    #     print(name)
+
+    model = get_peft_model(model, peft_config)
+    model.print_trainable_parameters()
+
 model = DDP(model, device_ids=[ddp_info.local_rank])
 
 

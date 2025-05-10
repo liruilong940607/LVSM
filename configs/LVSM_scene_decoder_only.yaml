@@ -81,4 +81,6 @@ inference:
     loop_video: True 
     order_poses: False
 
+pretrained: False
 prope: False
+lora: False
