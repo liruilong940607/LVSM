@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 import torch.distributed as dist
 from setup import init_config, init_distributed
 from utils.metric_utils import export_results, summarize_evaluation
+import tqdm
 
 # Load config and read(override) arguments from CLI
 config = init_config()
@@ -81,12 +82,16 @@ with torch.no_grad(), torch.autocast(
     device_type="cuda",
     dtype=amp_dtype_mapping[config.training.amp_dtype],
 ):
-    for batch in dataloader:
+    count = 0
+    for batch in tqdm.tqdm(dataloader):
         batch = {k: v.to(ddp_info.device) if type(v) == torch.Tensor else v for k, v in batch.items()}
         result = model(batch)
         if config.inference.get("render_video", False):
             result= model.module.render_video(result, **config.inference.render_video_config)
         export_results(result, config.inference_out_dir, compute_metrics=config.inference.get("compute_metrics"))
+        count += 1
+        if count > 10:
+            break
     torch.cuda.empty_cache()
 
 

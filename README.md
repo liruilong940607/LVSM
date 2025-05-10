@@ -91,7 +91,7 @@ The training will be distributed across 8 GPUs and 8 nodes with a total batch si
 
 If you have limited resources, you can use the following command to train a smaller model with a smaller batch size:
 ```bash
-torchrun --nproc_per_node 8 --nnodes 1 \
+torchrun --standalone --nproc_per_node 8 --nnodes 1 \
     --rdzv_id 18635 --rdzv_backend c10d --rdzv_endpoint localhost:29502 \
     train.py --config configs/LVSM_scene_decoder_only.yaml \
     model.transformer.n_layer = 12 \
@@ -105,10 +105,9 @@ We have also discussed the efficient settings (single/two GPU training) in the p
 ## 3. Inference
 
 ```bash
-torchrun --nproc_per_node 8 --nnodes 1 \
---rdzv_id 18635 --rdzv_backend c10d --rdzv_endpoint localhost:29506 \
+torchrun --standalone --nproc_per_node 1 --nnodes 1 \
 inference.py --config "configs/LVSM_scene_decoder_only.yaml" \
-training.dataset_path = "./preprocessed_data/test/full_list.txt" \
+training.dataset_path = "./dataset/re10k/test/full_list.txt" \
 training.batch_size_per_gpu = 4 \
 training.target_has_input =  false \
 training.num_views = 5 \
@@ -117,7 +116,7 @@ training.num_input_views = 2 \
 training.num_target_views = 3 \
 inference.if_inference = true \
 inference.compute_metrics = true \
-inference.render_video = true \
+inference.render_video = false \
 inference_out_dir = ./experiments/evaluation/test
 ```
 We use `./data/evaluation_index_re10k.json` to specify the input and target view indice. This json file is originally from [pixelSplat](https://github.com/dcharatan/pixelsplat). 

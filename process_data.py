@@ -44,7 +44,7 @@ def process_torch_file(file_path, output_dir):
         os.makedirs(meta_dir, exist_ok=True)
         
         # Load the torch file
-        data = torch.load(file_path)
+        data = torch.load(file_path, weights_only=False)
         
         # Process each scene in parallel using ThreadPool
         for cur_scene in data:
