@@ -127,7 +127,7 @@ def auto_resume_job(
         return optimizer, lr_scheduler, forward_pass_step, param_update_step
     try:
         ckpt_path = all_ckpt_paths[-1]
-        checkpoint = torch.load(ckpt_path, map_location="cpu")
+        checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     except:
         traceback.print_exc()
         print_rank0(f"Failed to load {ckpt_path}, we will start from scratch")

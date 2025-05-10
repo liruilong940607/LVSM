@@ -91,10 +91,10 @@ The training will be distributed across 8 GPUs and 8 nodes with a total batch si
 
 If you have limited resources, you can use the following command to train a smaller model with a smaller batch size:
 ```bash
-torchrun --standalone --nproc_per_node 8 --nnodes 1 \
-    --rdzv_id 18635 --rdzv_backend c10d --rdzv_endpoint localhost:29502 \
+torchrun --standalone --nproc_per_node 1 --nnodes 1 \
     train.py --config configs/LVSM_scene_decoder_only.yaml \
     model.transformer.n_layer = 12 \
+    training.dataset_path = "./dataset/re10k_subset/train/full_list.txt" \
     training.batch_size_per_gpu = 16
 
 ```

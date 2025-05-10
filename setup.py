@@ -121,7 +121,7 @@ def local_backup_src_code(
     dst_dir,
     max_size_MB=4.0,
     extension_to_backup=(".py", ".yaml", ".sh", ".bash", ".json"),
-    exclude_dirs=("wandb", ".git", "checkpoints", "experiments"),
+    exclude_dirs=("wandb", ".git", "checkpoints", "experiments", "dataset"),
     verbose=True,
 ):
     """
@@ -239,7 +239,7 @@ def init_wandb_and_backup(config):
     trgt_dir = os.path.join(config.training.checkpoint_dir, "src", os.path.basename(cur_dir))
     os.makedirs(trgt_dir, exist_ok=True)
     extension_to_backup=(".py", ".yaml", ".sh", ".bash", ".json")
-    exclude_dirs=("wandb", ".git", "checkpoints", "experiments")
+    exclude_dirs=("wandb", ".git", "checkpoints", "experiments", "dataset")
     local_backup_src_code(cur_dir, trgt_dir, extension_to_backup=extension_to_backup, exclude_dirs=exclude_dirs)
 
     # Save config file
