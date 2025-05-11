@@ -43,7 +43,7 @@ training:
   lr: 0.0004
   train_steps: 100000
   num_input_views: 2
-  num_target_views: 6
+  num_target_views: 
   num_threads: 8
   num_views: 8
   num_workers: 4

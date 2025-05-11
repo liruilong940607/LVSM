@@ -48,7 +48,7 @@ training:
   num_threads: 8
   num_views: 8
   num_workers: 4
-  prefetch_factor: 32
+  prefetch_factor: 8
   print_every: 20
 
 

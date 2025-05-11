@@ -74,7 +74,7 @@ model = LVSM(config).to(ddp_info.device)
 
 if config.pretrained:
     model.load_ckpt("./experiments/checkpoints/")
-    
+
 model = DDP(model, device_ids=[ddp_info.local_rank])
 
 if config.lora:
@@ -228,7 +228,7 @@ while cur_train_step <= total_train_steps:
     if ddp_info.is_main_process:
         loss_dict = {k: float(f"{v.item():.6f}") for k, v in ret_dict.loss_metrics.items()}
         # print in console
-        if (cur_train_step % config.training.print_every == 0) or (cur_train_step < 100 + start_train_step):
+        if (cur_train_step % config.training.print_every == 0): # or (cur_train_step < 100 + start_train_step):
             print_str = f"[Epoch {int(cur_epoch):>3d}] | Forwad step: {int(cur_train_step):>6d} (Param update step: {int(cur_param_update_step):>6d})"
             print_str += f" | Iter Time: {time.time() - tic:.2f}s | LR: {optimizer.param_groups[0]['lr']:.6f}\n"
             # Add loss values
