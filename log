@@ -3,6 +3,7 @@ torchrun --standalone --nproc_per_node 1 --nnodes 1     \
     training.dataset_path = "./dataset/re10k/test/full_list.txt"     \
     training.batch_size_per_gpu = 16    \
     training.train_steps = 10000 \
+    training.warmup = 300 \
     training.checkpoint_dir = "./experiments/checkpoints/decoder_only_prope_lora_pretrained_b16" \
     training.wandb_exp_name = "decoder_only_prope_lora_pretrained_b16" \
     prope=true  lora=true  pretrained=true

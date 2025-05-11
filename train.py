@@ -74,6 +74,8 @@ model = LVSM(config).to(ddp_info.device)
 
 if config.pretrained:
     model.load_ckpt("./experiments/checkpoints/")
+    
+model = DDP(model, device_ids=[ddp_info.local_rank])
 
 if config.lora:
     # apply lora to Q/K/V linear layers
@@ -93,8 +95,6 @@ if config.lora:
 
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
-
-model = DDP(model, device_ids=[ddp_info.local_rank])
 
 
 optimizer, optimized_param_dict, all_param_dict = create_optimizer(
