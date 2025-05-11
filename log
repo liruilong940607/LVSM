@@ -10,6 +10,23 @@ torchrun --standalone --nproc_per_node 1 --nnodes 1     \
     training.wandb_exp_name = "decoder_only_prope_50k_bs64" \
     prope=true  
 
+torchrun --standalone --nproc_per_node 1 --nnodes 1 \
+inference.py --config "configs/LVSM_scene_decoder_only.yaml" \
+training.dataset_path = "./dataset/re10k/center_crop_256/test/full_list.txt"     \
+training.checkpoint_dir = "./experiments/checkpoints/decoder_only_prope_50k_bs64" \
+model.transformer.n_layer = 12 \
+training.batch_size_per_gpu = 4 \
+training.target_has_input =  false \
+training.num_views = 5 \
+training.square_crop = true \
+training.num_input_views = 2 \
+training.num_target_views = 3 \
+inference.if_inference = true \
+inference.compute_metrics = true \
+inference.render_video = true \
+inference_out_dir = "./experiments/checkpoints/decoder_only_prope_50k_bs64/test/" \
+prope = true
+
 torchrun --standalone --nproc_per_node 1 --nnodes 1     \
     train.py --config configs/LVSM_scene_decoder_only.yaml     \
     training.dataset_path = "./dataset/re10k/center_crop_256/train/full_list.txt"     \
@@ -21,6 +38,23 @@ torchrun --standalone --nproc_per_node 1 --nnodes 1     \
     training.checkpoint_dir = "./experiments/checkpoints/decoder_only_50k_bs64" \
     training.wandb_exp_name = "decoder_only_50k_bs64"
 
+torchrun --standalone --nproc_per_node 1 --nnodes 1 \
+inference.py --config "configs/LVSM_scene_decoder_only.yaml" \
+training.dataset_path = "./dataset/re10k/center_crop_256/test/full_list.txt"     \
+training.checkpoint_dir = "./experiments/checkpoints/decoder_only_50k_bs64" \
+model.transformer.n_layer = 12 \
+training.batch_size_per_gpu = 4 \
+training.target_has_input =  false \
+training.num_views = 5 \
+training.square_crop = true \
+training.num_input_views = 2 \
+training.num_target_views = 3 \
+inference.if_inference = true \
+inference.compute_metrics = true \
+inference.render_video = true \
+inference_out_dir = "./experiments/checkpoints/decoder_only_50k_bs64/test/"
+
+# ------------------
 torchrun --standalone --nproc_per_node 1 --nnodes 1 \
 inference.py --config "configs/LVSM_scene_decoder_only.yaml" \
 model.transformer.n_layer = 4 \
