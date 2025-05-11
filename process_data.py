@@ -11,12 +11,54 @@ import multiprocessing as mp
 import logging
 import time
 import argparse
+from typing import Tuple
+
 
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+
+def resize_crop_with_subpixel_accuracy(
+    image: np.ndarray, K: np.ndarray, patch_size: int
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Resize and crop the image to have the smallest side equal to `patch_size`,
+    while maintaining sub-pixel accuracy using a single warpAffine transformation.
+
+    Args:
+        image (np.ndarray): Input image.
+        K (np.ndarray): Camera intrinsic matrix.
+        patch_size (int): Target size of the smaller dimension.
+
+    Returns:
+        Tuple[np.ndarray, np.ndarray]: Resized and cropped image, updated intrinsic matrix.
+    """
+    h, w = image.shape[:2]
+    scale = patch_size / min(h, w)
+
+    # Compute the affine transformation matrix combining scaling and cropping
+    new_w, new_h = w * scale, h * scale
+    crop_x = (new_w - patch_size) / 2
+    crop_y = (new_h - patch_size) / 2
+
+    M = np.array([[scale, 0, -crop_x], [0, scale, -crop_y]], dtype=np.float32)
+
+    # Apply affine transformation with sub-pixel accuracy
+    is_downsampling = min(h, w) > patch_size
+    interpolation = cv2.INTER_AREA if is_downsampling else cv2.INTER_CUBIC
+    cropped_resized_image = cv2.warpAffine(
+        image, M, (patch_size, patch_size), flags=interpolation
+    )
+
+    # Update intrinsic matrix K
+    K_scaled = K.copy()
+    K_scaled[:2, :] *= scale
+    K_scaled[0, 2] -= crop_x
+    K_scaled[1, 2] -= crop_y
+
+    return cropped_resized_image, K_scaled
+
 
 def process_single_file(args):
     """
@@ -25,10 +67,10 @@ def process_single_file(args):
     Args:
         args (tuple): Tuple containing (file_path, output_dir)
     """
-    file_path, output_dir = args
-    return process_torch_file(file_path, output_dir)
+    file_path, output_dir, center_crop, save_jpg = args
+    return process_torch_file(file_path, output_dir, center_crop, save_jpg)
 
-def process_torch_file(file_path, output_dir):
+def process_torch_file(file_path, output_dir, center_crop=-1, save_jpg=False):
     """
     Process a .torch file and save images and poses
     
@@ -37,6 +79,7 @@ def process_torch_file(file_path, output_dir):
         output_dir (str): Base directory to save outputs
     """
     try:
+
         # Create output directories
         images_dir = os.path.join(output_dir, 'images')
         meta_dir = os.path.join(output_dir, 'metadata')
@@ -83,11 +126,6 @@ def process_torch_file(file_path, output_dir):
                     
                     h, w = img_array.shape[:2]
                     
-                    # Save as PNG using cv2 (faster than plt.imsave)
-                    img_path = os.path.join(seq_images_dir, f'{img_idx:05d}.png')
-                    if not cv2.imwrite(img_path, img_array):
-                        raise ValueError(f"Failed to write image to {img_path}")
-                    
                     # Convert pose info tensors to regular Python types if needed
                     pose_data = cur_pose_info[img_idx]
                     if isinstance(pose_data, torch.Tensor):
@@ -104,13 +142,27 @@ def process_torch_file(file_path, output_dir):
                     # Calculate world to camera transform
                     w2c = np.array(pose_data[6:], dtype=np.float32).reshape(3, 4)
                     w2c = np.vstack([w2c, [0, 0, 0, 1]])
+
+                    # Optionally resize and center crop the image to save disk space
+                    if center_crop > 0:
+                        K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float32)
+                        img_array, K = resize_crop_with_subpixel_accuracy(img_array, K, args.center_crop)
+                        fx, fy, cx, cy = K[0, 0], K[1, 1], K[0, 2], K[1, 2]
+                        fx, fy, cx, cy = float(fx), float(fy), float(cx), float(cy)
+
+                    ext = 'jpg' if save_jpg else 'png'
                     
                     frame_info = {
-                        'image_path': os.path.join(seq_images_dir, f'{img_idx:05d}.png'),
+                        'image_path': os.path.join(seq_images_dir, f'{img_idx:05d}.{ext}'),
                         'fxfycxcy': [fx, fy, cx, cy],
                         'w2c': w2c.tolist()
                     }
                     frames.append(frame_info)
+
+                    # Save using cv2 (faster than plt.imsave)
+                    img_path = os.path.join(seq_images_dir, f'{img_idx:05d}.{ext}')
+                    if not cv2.imwrite(img_path, img_array):
+                        raise ValueError(f"Failed to write image to {img_path}")
                     
                 except Exception as e:
                     logging.error(f"Error processing image {img_idx} in {file_path}: {str(e)}")
@@ -128,7 +180,7 @@ def process_torch_file(file_path, output_dir):
         logging.error(f"Error processing {file_path}: {str(e)}")
         return False, file_path
 
-def process_directory(input_dir, output_dir, num_processes=None, chunk_size=1):
+def process_directory(input_dir, output_dir, num_processes=None, chunk_size=1, center_crop=-1, save_jpg=False):
     """
     Process all .torch files in a directory using multiprocessing
     
@@ -151,7 +203,7 @@ def process_directory(input_dir, output_dir, num_processes=None, chunk_size=1):
         num_processes = max(1, mp.cpu_count() - 1)
     
     # Prepare arguments for multiprocessing
-    args = [(f, output_dir) for f in torch_files]
+    args = [(f, output_dir, center_crop, save_jpg) for f in torch_files]
     
     # Process files in parallel with progress bar
     start_time = time.time()
@@ -191,6 +243,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_processes", type=int, default=32)
     parser.add_argument("--output_dir", type=str, default='/share/phoenix/nfs06/S9/hj453/DATA/re10k/')
     parser.add_argument("--base_path", type=str, default='/share/phoenix/nfs06/S9/hj453/DATA/re10k_raw/')
+    parser.add_argument("--center_crop", type=int, default=-1) # -1 means no center crop
+    parser.add_argument("--save_jpg", action="store_true") # save images as jpg to save disk space
     
     args = parser.parse_args()
     # Example usage
@@ -198,9 +252,11 @@ if __name__ == "__main__":
     input_dir = os.path.join(args.base_path, cur_mode)
     # output_dir = os.path.join('./', 'preprocessed_data', cur_mode)
     output_dir = os.path.join(args.output_dir, cur_mode)
+    if args.center_crop > 0:
+        output_dir = os.path.join(output_dir, f"center_crop_{args.center_crop}")
     # Process test data only
     logging.info("Starting test data processing...")
-    process_directory(input_dir, output_dir, chunk_size=args.chunk_size, num_processes=args.num_processes)  
+    process_directory(input_dir, output_dir, chunk_size=args.chunk_size, num_processes=args.num_processes, center_crop=args.center_crop, save_jpg=args.save_jpg)  
     logging.info("Processing completed!") 
     search_list_dir = os.path.join(args.output_dir, cur_mode, 'metadata')
     save_dir = os.path.join(args.output_dir, cur_mode)
