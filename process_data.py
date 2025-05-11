@@ -264,6 +264,5 @@ if __name__ == "__main__":
     process_directory(input_dir, output_dir, chunk_size=args.chunk_size, num_processes=args.num_processes, center_crop=args.center_crop, save_jpg=args.save_jpg)  
     logging.info("Processing completed!") 
     search_list_dir = os.path.join(output_dir, 'metadata')
-    save_dir = os.path.join(args.output_dir, cur_mode)
-    generate_full_list(search_list_dir, save_dir)
+    generate_full_list(search_list_dir, output_dir)
     logging.info("Full list generated!")
