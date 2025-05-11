@@ -251,9 +251,10 @@ if __name__ == "__main__":
     cur_mode = args.mode
     input_dir = os.path.join(args.base_path, cur_mode)
     # output_dir = os.path.join('./', 'preprocessed_data', cur_mode)
-    output_dir = os.path.join(args.output_dir, cur_mode)
     if args.center_crop > 0:
-        output_dir = os.path.join(output_dir, f"center_crop_{args.center_crop}")
+        output_dir = os.path.join(args.output_dir, f"center_crop_{args.center_crop}", cur_mode)
+    else:
+        output_dir = os.path.join(args.output_dir, cur_mode)
     # Process test data only
     logging.info("Starting test data processing...")
     process_directory(input_dir, output_dir, chunk_size=args.chunk_size, num_processes=args.num_processes, center_crop=args.center_crop, save_jpg=args.save_jpg)  
