@@ -174,6 +174,9 @@ def process_torch_file(file_path, output_dir, center_crop=-1, save_jpg=False):
             meta_path = os.path.join(meta_dir, f'{scene_name}.json')
             with open(meta_path, 'w') as f:
                 json.dump(cur_info_dict, f, indent=4)
+
+        # when completed, delete the torch file (to save disk space)
+        os.remove(file_path)
                 
         return True, file_path
     except Exception as e:
@@ -197,6 +200,7 @@ def process_directory(input_dir, output_dir, num_processes=None, chunk_size=1, c
 
     total_files = len(torch_files)
     logging.info(f"Found {total_files} files to process in {input_dir}")
+    time.sleep(5) # sleep 5 seconds to make sure the files are all valid
     
     # Set up multiprocessing
     if num_processes is None:
